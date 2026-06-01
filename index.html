@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NEON PONG</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ======================================================
+       MÀN HÌNH INTRO
+  ====================================================== -->
+  <div id="intro-screen" class="screen">
+    <div class="intro-bg">
+      <div class="intro-grid"></div>
+      <div id="intro-particles" class="intro-particles"></div>
+    </div>
+
+    <div class="intro-content">
+      <div class="intro-logo-wrap">
+        <div class="intro-logo" id="intro-logo">
+          <span>N</span><span>E</span><span>O</span><span>N</span>
+          <span class="logo-space">&nbsp;</span>
+          <span>P</span><span>O</span><span>N</span><span>G</span>
+        </div>
+        <div class="intro-tagline" id="intro-tagline">ARCADE EDITION v2.0</div>
+      </div>
+
+      <div class="intro-demo">
+        <canvas id="demoCanvas" width="340" height="190"></canvas>
+      </div>
+
+      <div class="intro-press" id="intro-press">▶ NHẤN BẤT KỲ PHÍM NÀO ĐỂ BẮT ĐẦU</div>
+
+      <div class="intro-loadbar-wrap" id="intro-loadbar-wrap">
+        <div class="intro-loadbar">
+          <div class="intro-loadbar-fill" id="intro-loadbar-fill"></div>
+        </div>
+        <div class="intro-loadtext" id="intro-loadtext">ĐANG KHỞI ĐỘNG...</div>
+      </div>
+
+      <div class="intro-credit">© 2025 NEON PONG ARCADE &nbsp;•&nbsp; ALL RIGHTS RESERVED</div>
+    </div>
+  </div>
+
+
+  <!-- ======================================================
+       MÀN HÌNH ĐĂNG NHẬP / ĐĂNG KÝ
+  ====================================================== -->
+  <div id="auth-screen" class="screen hidden">
+    <div class="auth-bg">
+      <div class="auth-grid"></div>
+    </div>
+
+    <div class="auth-card">
+      <div class="logo">NEON PONG</div>
+      <div class="logo-sub">ARCADE EDITION v2.0</div>
+
+      <!-- Tab chuyển Login / Register -->
+      <div class="tab-row">
+        <button class="tab-btn active" onclick="switchAuthTab('login')">ĐĂNG NHẬP</button>
+        <button class="tab-btn"        onclick="switchAuthTab('register')">ĐĂNG KÝ</button>
+      </div>
+
+      <!-- Form Đăng nhập -->
+      <div id="login-form">
+        <div class="form-group">
+          <label class="form-label">TÊN ĐĂNG NHẬP</label>
+          <input type="text"     id="login-user" class="form-input" placeholder="username" autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">MẬT KHẨU</label>
+          <input type="password" id="login-pass" class="form-input" placeholder="••••••" autocomplete="current-password" />
+        </div>
+        <button class="btn-primary" onclick="doLogin()">ĐĂNG NHẬP</button>
+      </div>
+
+      <!-- Form Đăng ký -->
+      <div id="register-form" style="display:none">
+        <div class="form-group">
+          <label class="form-label">TÊN ĐĂNG NHẬP</label>
+          <input type="text"     id="reg-user"  class="form-input" placeholder="username" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">MẬT KHẨU</label>
+          <input type="password" id="reg-pass"  class="form-input" placeholder="••••••" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">XÁC NHẬN MẬT KHẨU</label>
+          <input type="password" id="reg-pass2" class="form-input" placeholder="••••••" />
+        </div>
+        <button class="btn-primary" onclick="doRegister()">TẠO TÀI KHOẢN</button>
+      </div>
+
+      <div id="auth-msg" class="auth-msg"></div>
+      <span class="guest-btn" onclick="playAsGuest()">Chơi thử không cần đăng nhập →</span>
+    </div>
+  </div>
+
+
+  <!-- ======================================================
+       MÀN HÌNH CHÍNH
+  ====================================================== -->
+  <div id="main-screen" class="screen hidden" style="overflow-y:auto">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="header-logo">⬡ NEON PONG</div>
+      <div class="header-right">
+        <div class="coin-badge"><span id="hdr-coins">0</span> XU</div>
+        <div class="user-badge">⚡ <span id="hdr-user">GUEST</span></div>
+        <!-- Nút điều khiển nhạc -->
+        <button class="music-btn" id="music-btn" onclick="toggleMusic()" title="Bật/Tắt nhạc">
+          <span id="music-icon">♫</span>
+        </button>
+        <button class="logout-btn" onclick="doLogout()">THOÁT</button>
+      </div>
+    </div>
+
+    <!-- Navigation tabs -->
+    <div class="nav-tabs">
+      <button class="nav-tab active" onclick="switchPanel('game')">🎮 CHƠI GAME</button>
+      <button class="nav-tab"        onclick="switchPanel('shop')">🏪 CỬA HÀNG</button>
+      <button class="nav-tab"        onclick="switchPanel('stats')">📊 THỐNG KÊ</button>
+    </div>
+
+
+    <!-- ================================================
+         PANEL: GAME
+    ================================================ -->
+    <div id="panel-game" class="panel active">
+
+      <!-- Thanh điều khiển trên -->
+      <div class="game-top">
+        <div style="display:flex; align-items:center; gap:20px">
+          <div class="game-mode-selector">
+            <button class="mode-btn active" onclick="setMode('ai')">VS MÁY</button>
+            <button class="mode-btn"        onclick="setMode('2p')">2 NGƯỜI</button>
+          </div>
+          <div class="diff-selector" id="diff-selector">
+            <span class="diff-label">KHÓ:</span>
+            <span class="diff-star on" onclick="setDiff(1)">★</span>
+            <span class="diff-star on" onclick="setDiff(2)">★</span>
+            <span class="diff-star"    onclick="setDiff(3)">★</span>
+          </div>
+        </div>
+        <div class="game-controls-hint" id="controls-hint">
+          CHUỘT / ↑↓ &nbsp;•&nbsp; MÁY TỰ ĐỘNG
+        </div>
+      </div>
+
+      <!-- Canvas sân đấu -->
+      <div class="canvas-wrapper" id="canvas-wrapper">
+        <canvas id="gameCanvas" width="800" height="500"></canvas>
+
+        <!-- Bảng điểm overlay -->
+        <div class="score-overlay">
+          <div class="score-val" id="score-left">0</div>
+          <div class="score-val" id="score-right">0</div>
+        </div>
+
+        <!-- Overlay bắt đầu -->
+        <div id="start-overlay" class="game-start-overlay">
+          <div class="start-title">NEON PONG</div>
+          <div class="start-sub">DI CHUYỂN CHUỘT HOẶC PHÍM MŨI TÊN ĐỂ ĐIỀU KHIỂN</div>
+          <button class="start-btn" onclick="startGame()">▶ BẮT ĐẦU</button>
+        </div>
+
+        <!-- Overlay kết thúc -->
+        <div id="win-overlay" class="win-overlay hidden">
+          <div class="win-title"  id="win-title">CHIẾN THẮNG!</div>
+          <div class="win-reward" id="win-reward">+50 XU</div>
+          <div class="win-stats"  id="win-stats"></div>
+          <button class="start-btn" style="margin-top:8px" onclick="resetGame()">CHƠI LẠI</button>
+        </div>
+      </div>
+
+      <!-- Thanh vật phẩm -->
+      <div class="power-bar" id="power-bar">
+        <span style="font-size:11px; color:var(--text2); letter-spacing:2px">VẬT PHẨM:</span>
+      </div>
+    </div>
+
+
+    <!-- ================================================
+         PANEL: CỬA HÀNG
+    ================================================ -->
+    <div id="panel-shop" class="panel" style="padding:24px">
+
+      <!-- Banner thưởng hàng ngày -->
+      <div class="daily-banner">
+        <div class="daily-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36">
+            <rect x="2"  y="14" width="32" height="20" rx="4" fill="#2a1a44" stroke="#ffbe0b" stroke-width="1.5"/>
+            <rect x="2"  y="14" width="32" height="7"  rx="3" fill="#3a2255" stroke="#ffbe0b" stroke-width="1"/>
+            <rect x="16" y="14" width="4"  height="20"        fill="#ffbe0b" opacity=".8"/>
+            <rect x="2"  y="18" width="32" height="3"         fill="#ffbe0b" opacity=".3"/>
+            <path d="M18 14 Q12 8 10 4 Q14 2 18 8 Q22 2 26 4 Q24 8 18 14Z" fill="#ff006e"/>
+            <path d="M18 14 Q12 8 10 4 Q14 2 18 8 Q22 2 26 4 Q24 8 18 14Z" fill="none" stroke="#ffbe0b" stroke-width="1"/>
+          </svg>
+        </div>
+        <div class="daily-info">
+          <div class="daily-title">PHẦN THƯỞNG HÀNG NGÀY</div>
+          <div class="daily-sub" id="daily-sub">Nhận ngay +30 xu hôm nay!</div>
+        </div>
+        <button class="daily-btn" id="daily-btn" onclick="claimDaily()">NHẬN NGAY</button>
+      </div>
+
+      <!-- Skin bóng -->
+      <div class="shop-section">
+        <div class="shop-section-title">🔮 SKIN BÓNG</div>
+        <div class="shop-grid" id="ball-shop"></div>
+      </div>
+
+      <!-- Skin thanh đỡ -->
+      <div class="shop-section">
+        <div class="shop-section-title">🏓 SKIN THANH ĐỠ</div>
+        <div class="shop-grid" id="paddle-shop"></div>
+      </div>
+
+      <!-- Vật phẩm hỗ trợ -->
+      <div class="shop-section">
+        <div class="shop-section-title">⚡ VẬT PHẨM HỖ TRỢ</div>
+        <div class="shop-grid" id="power-shop"></div>
+      </div>
+    </div>
+
+
+    <!-- ================================================
+         PANEL: THỐNG KÊ & BẢNG XẾP HẠNG
+    ================================================ -->
+    <div id="panel-stats" class="panel" style="padding:24px">
+      <div class="stats-grid" id="stats-grid"></div>
+
+      <div class="shop-section-title"
+           style="margin-bottom:16px; font-size:11px; letter-spacing:4px; color:var(--text2);
+                  padding-bottom:8px; border-bottom:1px solid var(--border)">
+        🏆 BẢNG XẾP HẠNG
+      </div>
+      <table class="leaderboard-table" id="leaderboard"></table>
+    </div>
+
+  </div><!-- /main-screen -->
+
+
+  <!-- Toast thông báo -->
+  <div class="toast" id="toast"></div>
+
+  <script src="game.js"></script>
+</body>
+</html>
