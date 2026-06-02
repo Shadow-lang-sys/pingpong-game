@@ -274,6 +274,40 @@
       </div>
     </div>
 
+    <!-- CHAT BUBBLE (nổi góc phải dưới, hiện ở mọi panel) -->
+    <div id="chat-bubble" class="chat-bubble hidden">
+      <button class="chat-bubble-btn" onclick="toggleChatList()">
+        💬
+        <span class="chat-unread-badge" id="chat-unread-badge" style="display:none">0</span>
+      </button>
+    </div>
+
+    <!-- CHAT LIST (danh sách hội thoại) -->
+    <div id="chat-list-panel" class="chat-panel hidden">
+      <div class="chat-panel-header">
+        <span>💬 TIN NHẮN</span>
+        <button onclick="closeChatList()" class="chat-close-btn">×</button>
+      </div>
+      <div id="chat-conversations" class="chat-conversations">
+        <div style="text-align:center;padding:24px;color:var(--text2);font-size:12px;">Đang tải...</div>
+      </div>
+    </div>
+
+    <!-- CHAT WINDOW (cửa sổ chat với 1 người) -->
+    <div id="chat-window" class="chat-panel hidden">
+      <div class="chat-panel-header">
+        <button onclick="backToChatList()" class="chat-back-btn">←</button>
+        <span id="chat-window-name">Tên bạn bè</span>
+        <button onclick="closeChatWindow()" class="chat-close-btn">×</button>
+      </div>
+      <div id="chat-messages" class="chat-messages"></div>
+      <div class="chat-input-row">
+        <input id="chat-input" class="chat-input" placeholder="Nhắn tin..."
+               maxlength="300" onkeydown="if(event.key==='Enter')sendMessage()" />
+        <button class="chat-send-btn" onclick="sendMessage()">➤</button>
+      </div>
+    </div>
+
   </div><!-- /main-screen -->
 
 

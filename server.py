@@ -145,6 +145,17 @@ CREATE TABLE IF NOT EXISTS friendships (
     FOREIGN KEY (from_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (to_id)   REFERENCES users(id) ON DELETE CASCADE
 );
+-- Tin nhắn riêng giữa 2 người dùng
+CREATE TABLE IF NOT EXISTS messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_id     INTEGER NOT NULL,
+    to_id       INTEGER NOT NULL,
+    content     TEXT    NOT NULL,
+    is_read     INTEGER NOT NULL DEFAULT 0,
+    created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    FOREIGN KEY (from_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (to_id)   REFERENCES users(id) ON DELETE CASCADE
+);
 """
 
 def init_db():
@@ -741,7 +752,136 @@ def api_users_search():
     """, (f"%{q}%", uid))
     return jsonify({"users": [dict(r) for r in rows]})
 
-@app.route("/api/admin/users", methods=["GET"])
+# ──────────────────────────────────────────────────────────────
+#  API — CHAT (Direct Message)
+# ──────────────────────────────────────────────────────────────
+
+MAX_MSG_LEN = 300
+
+@app.route("/api/chat/send", methods=["POST"])
+@require_auth
+def api_chat_send():
+    data    = request.get_json(silent=True) or {}
+    to_user = (data.get("to_username") or "").strip()
+    content = (data.get("content")     or "").strip()
+    uid     = g.current_user["id"]
+
+    if not to_user or not content:
+        return jsonify({"error": "Thiếu thông tin"}), 400
+    if len(content) > MAX_MSG_LEN:
+        return jsonify({"error": f"Tin nhắn tối đa {MAX_MSG_LEN} ký tự"}), 400
+
+    target = query("SELECT id FROM users WHERE username=?", (to_user,), one=True)
+    if not target:
+        return jsonify({"error": "Người dùng không tồn tại"}), 404
+    tid = target["id"]
+
+    if tid == uid:
+        return jsonify({"error": "Không thể nhắn tin cho chính mình"}), 400
+
+    # Kiểm tra 2 người có phải bạn bè không
+    friends = query("""
+        SELECT 1 FROM friendships
+        WHERE ((from_id=? AND to_id=?) OR (from_id=? AND to_id=?))
+          AND status='accepted'
+    """, (uid, tid, tid, uid), one=True)
+    if not friends:
+        return jsonify({"error": "Chỉ có thể nhắn tin với bạn bè"}), 403
+
+    query("INSERT INTO messages (from_id, to_id, content) VALUES (?,?,?)",
+          (uid, tid, content), commit=True)
+
+    msg_id = query("SELECT last_insert_rowid() as id", one=True)["id"]
+    return jsonify({"ok": True, "msg_id": msg_id, "created_at": int(time.time())})
+
+
+@app.route("/api/chat/history/<username>", methods=["GET"])
+@require_auth
+def api_chat_history(username):
+    uid    = g.current_user["id"]
+    target = query("SELECT id FROM users WHERE username=?", (username,), one=True)
+    if not target:
+        return jsonify({"error": "Người dùng không tồn tại"}), 404
+    tid = target["id"]
+
+    # Lấy 50 tin nhắn gần nhất giữa 2 người
+    rows = query("""
+        SELECT m.id, m.content, m.created_at, m.is_read,
+               uf.username AS from_username,
+               ut.username AS to_username
+        FROM messages m
+        JOIN users uf ON m.from_id = uf.id
+        JOIN users ut ON m.to_id   = ut.id
+        WHERE (m.from_id=? AND m.to_id=?) OR (m.from_id=? AND m.to_id=?)
+        ORDER BY m.created_at ASC
+        LIMIT 50
+    """, (uid, tid, tid, uid))
+
+    # Đánh dấu đã đọc các tin nhắn của đối phương gửi cho mình
+    query("UPDATE messages SET is_read=1 WHERE from_id=? AND to_id=? AND is_read=0",
+          (tid, uid), commit=True)
+
+    messages = [{
+        "id":           r["id"],
+        "from":         r["from_username"],
+        "content":      r["content"],
+        "created_at":   r["created_at"],
+        "is_read":      bool(r["is_read"]),
+    } for r in rows]
+
+    return jsonify({"messages": messages})
+
+
+@app.route("/api/chat/unread", methods=["GET"])
+@require_auth
+def api_chat_unread():
+    """Trả về số tin nhắn chưa đọc theo từng người gửi."""
+    uid  = g.current_user["id"]
+    rows = query("""
+        SELECT u.username, COUNT(*) as cnt
+        FROM messages m
+        JOIN users u ON m.from_id = u.id
+        WHERE m.to_id=? AND m.is_read=0
+        GROUP BY m.from_id
+    """, (uid,))
+    unread = {r["username"]: r["cnt"] for r in rows}
+    total  = sum(unread.values())
+    return jsonify({"unread": unread, "total": total})
+
+
+@app.route("/api/chat/conversations", methods=["GET"])
+@require_auth
+def api_chat_conversations():
+    """Danh sách hội thoại: mỗi người bạn bè + tin nhắn mới nhất + số chưa đọc."""
+    uid = g.current_user["id"]
+    rows = query("""
+        SELECT
+            u.username,
+            u.wins,
+            (SELECT content FROM messages
+             WHERE (from_id=u.id AND to_id=?) OR (from_id=? AND to_id=u.id)
+             ORDER BY created_at DESC LIMIT 1) AS last_msg,
+            (SELECT created_at FROM messages
+             WHERE (from_id=u.id AND to_id=?) OR (from_id=? AND to_id=u.id)
+             ORDER BY created_at DESC LIMIT 1) AS last_at,
+            (SELECT COUNT(*) FROM messages
+             WHERE from_id=u.id AND to_id=? AND is_read=0) AS unread
+        FROM friendships f
+        JOIN users u ON (
+            CASE WHEN f.from_id=? THEN f.to_id ELSE f.from_id END = u.id
+        )
+        WHERE (f.from_id=? OR f.to_id=?) AND f.status='accepted'
+        ORDER BY last_at DESC NULLS LAST
+    """, (uid, uid, uid, uid, uid, uid, uid, uid))
+
+    convos = [{
+        "username": r["username"],
+        "wins":     r["wins"],
+        "last_msg": r["last_msg"] or "",
+        "last_at":  r["last_at"]  or 0,
+        "unread":   r["unread"]   or 0,
+    } for r in rows]
+    return jsonify({"conversations": convos})
 def api_admin_users():
     secret = request.args.get("secret", "")
     if secret != SECRET_KEY:
@@ -762,6 +902,9 @@ def api_ping():
 # ──────────────────────────────────────────────────────────────
 #  KHỞI ĐỘNG
 # ──────────────────────────────────────────────────────────────
+
+# Chạy init_db() ngay khi module được load
+# (gunicorn import module này nên init_db chạy trước mọi request)
 init_db()
 
 if __name__ == "__main__":
