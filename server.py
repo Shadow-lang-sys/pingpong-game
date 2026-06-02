@@ -762,9 +762,9 @@ def api_ping():
 # ──────────────────────────────────────────────────────────────
 #  KHỞI ĐỘNG
 # ──────────────────────────────────────────────────────────────
+init_db()
 
 if __name__ == "__main__":
-    init_db()
     print("=" * 55)
     print("  NEON PONG SERVER  —  http://localhost:5000")
     print("  Nhấn Ctrl+C để dừng")
