@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+
   <!-- ======================================================
        MÀN HÌNH INTRO
   ====================================================== -->
@@ -110,10 +111,32 @@
       <div class="header-right">
         <div class="coin-badge"><span id="hdr-coins">0</span> XU</div>
         <div class="user-badge">⚡ <span id="hdr-user">GUEST</span></div>
-        <!-- Nút điều khiển nhạc -->
-        <button class="music-btn" id="music-btn" onclick="toggleMusic()" title="Bật/Tắt nhạc">
-          <span id="music-icon">♫</span>
-        </button>
+        <!-- Nút nhạc + player dropdown -->
+        <div style="position:relative;">
+          <button class="music-btn" id="music-btn" onclick="toggleMusicPlayer()" title="Trình phát nhạc">
+            <span id="music-icon">♫</span>
+          </button>
+          <!-- Music Player Panel -->
+          <div id="music-player-panel" class="music-player-panel">
+            <div class="mp-now-playing">
+              <div class="mp-label">ĐANG PHÁT</div>
+              <div class="mp-track-info">
+                <span class="mp-tag" id="mp-tag">MENU</span>
+                <div id="mp-title" class="mp-title">Cyber Arcade</div>
+                <div id="mp-author" class="mp-author">Neon Pong OST</div>
+              </div>
+              <div class="mp-controls">
+                <button onclick="prevTrack()" class="mp-ctrl-btn">⏮</button>
+                <button onclick="toggleMusic()" id="mp-mute-btn" class="mp-ctrl-btn mp-ctrl-main">🔊</button>
+                <button onclick="nextTrack()" class="mp-ctrl-btn">⏭</button>
+              </div>
+            </div>
+            <div class="mp-tracklist">
+              <div class="mp-tracklist-label">DANH SÁCH NHẠC</div>
+              <div id="mp-tracks"></div>
+            </div>
+          </div>
+        </div>
         <button class="logout-btn" onclick="doLogout()">THOÁT</button>
       </div>
     </div>
@@ -123,6 +146,7 @@
       <button class="nav-tab active" onclick="switchPanel('game')">🎮 CHƠI GAME</button>
       <button class="nav-tab"        onclick="switchPanel('shop')">🏪 CỬA HÀNG</button>
       <button class="nav-tab"        onclick="switchPanel('stats')">📊 THỐNG KÊ</button>
+      <button class="nav-tab"        onclick="switchPanel('friends')">👥 BẠN BÈ</button>
     </div>
 
 
@@ -239,6 +263,15 @@
         🏆 BẢNG XẾP HẠNG
       </div>
       <table class="leaderboard-table" id="leaderboard"></table>
+    </div>
+
+    <!-- PANEL: BẠN BÈ -->
+    <div id="panel-friends" class="panel" style="padding:24px">
+      <div id="friends-section">
+        <div style="color:var(--text2);font-size:13px;text-align:center;padding:32px;">
+          Đang tải...
+        </div>
+      </div>
     </div>
 
   </div><!-- /main-screen -->

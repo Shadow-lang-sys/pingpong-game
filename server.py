@@ -131,6 +131,20 @@ CREATE TABLE IF NOT EXISTS match_history (
     played_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- Bạn bè
+-- status: 'pending' (chờ xác nhận) | 'accepted' (đã kết bạn)
+CREATE TABLE IF NOT EXISTS friendships (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_id     INTEGER NOT NULL,
+    to_id       INTEGER NOT NULL,
+    status      TEXT    NOT NULL DEFAULT 'pending'
+                        CHECK(status IN ('pending','accepted')),
+    created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    UNIQUE (from_id, to_id),
+    FOREIGN KEY (from_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (to_id)   REFERENCES users(id) ON DELETE CASCADE
+);
 """
 
 def init_db():
@@ -570,8 +584,162 @@ def api_history():
 
 
 # ──────────────────────────────────────────────────────────────
-#  API — ADMIN (chỉ dùng để debug)
+#  API — FRIENDS
 # ──────────────────────────────────────────────────────────────
+
+def mini_profile(row) -> dict:
+    """Profile tóm gọn để trả về trong danh sách bạn bè."""
+    return {
+        "username":    row["username"],
+        "wins":        row["wins"],
+        "coins":       row["coins"],
+        "high_streak": row["high_streak"],
+        "games_played":row["games_played"],
+    }
+
+
+@app.route("/api/friends", methods=["GET"])
+@require_auth
+def api_friends():
+    uid = g.current_user["id"]
+
+    # Danh sách bạn đã accepted (cả hai chiều)
+    rows = query("""
+        SELECT u.username, u.wins, u.coins, u.high_streak, u.games_played
+        FROM friendships f
+        JOIN users u ON (
+            CASE WHEN f.from_id = ? THEN f.to_id ELSE f.from_id END = u.id
+        )
+        WHERE (f.from_id = ? OR f.to_id = ?) AND f.status = 'accepted'
+    """, (uid, uid, uid))
+    friends = [mini_profile(r) for r in rows]
+
+    # Lời mời tôi đã GỬI đi, đang pending
+    sent_rows = query("""
+        SELECT u.username, u.wins FROM friendships f
+        JOIN users u ON f.to_id = u.id
+        WHERE f.from_id = ? AND f.status = 'pending'
+    """, (uid,))
+    sent = [{"username": r["username"], "wins": r["wins"]} for r in sent_rows]
+
+    # Lời mời tôi NHẬN được, đang pending
+    recv_rows = query("""
+        SELECT u.username, u.wins FROM friendships f
+        JOIN users u ON f.from_id = u.id
+        WHERE f.to_id = ? AND f.status = 'pending'
+    """, (uid,))
+    received = [{"username": r["username"], "wins": r["wins"]} for r in recv_rows]
+
+    return jsonify({"friends": friends, "sent": sent, "received": received})
+
+
+@app.route("/api/friends/request", methods=["POST"])
+@require_auth
+def api_friend_request():
+    to_username = (request.get_json(silent=True) or {}).get("to_username", "").strip()
+    uid         = g.current_user["id"]
+
+    if not to_username:
+        return jsonify({"error": "Thiếu username"}), 400
+    if to_username == g.current_user["username"]:
+        return jsonify({"error": "Không thể kết bạn với chính mình"}), 400
+
+    target = query("SELECT id FROM users WHERE username=?", (to_username,), one=True)
+    if not target:
+        return jsonify({"error": "Người dùng không tồn tại"}), 404
+    tid = target["id"]
+
+    # Kiểm tra đã có quan hệ chưa
+    existing = query("""
+        SELECT status FROM friendships
+        WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?)
+    """, (uid, tid, tid, uid), one=True)
+
+    if existing:
+        if existing["status"] == "accepted":
+            return jsonify({"error": "Đã là bạn bè rồi"}), 409
+        return jsonify({"error": "Lời mời đã tồn tại"}), 409
+
+    query("INSERT INTO friendships (from_id, to_id) VALUES (?, ?)", (uid, tid), commit=True)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/friends/respond", methods=["POST"])
+@require_auth
+def api_friend_respond():
+    data          = request.get_json(silent=True) or {}
+    from_username = data.get("from_username", "").strip()
+    accept        = bool(data.get("accept", False))
+    uid           = g.current_user["id"]
+
+    sender = query("SELECT id FROM users WHERE username=?", (from_username,), one=True)
+    if not sender:
+        return jsonify({"error": "Người dùng không tồn tại"}), 404
+
+    frow = query("""SELECT id FROM friendships WHERE from_id=? AND to_id=? AND status='pending'""",
+                 (sender["id"], uid), one=True)
+    if not frow:
+        return jsonify({"error": "Không tìm thấy lời mời"}), 404
+
+    if accept:
+        query("UPDATE friendships SET status='accepted' WHERE id=?", (frow["id"],), commit=True)
+    else:
+        query("DELETE FROM friendships WHERE id=?", (frow["id"],), commit=True)
+
+    return jsonify({"ok": True, "accepted": accept})
+
+
+@app.route("/api/friends/remove", methods=["POST"])
+@require_auth
+def api_friend_remove():
+    username = (request.get_json(silent=True) or {}).get("username", "").strip()
+    uid      = g.current_user["id"]
+
+    target = query("SELECT id FROM users WHERE username=?", (username,), one=True)
+    if not target:
+        return jsonify({"error": "Người dùng không tồn tại"}), 404
+    tid = target["id"]
+
+    query("""DELETE FROM friendships
+             WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?)""",
+          (uid, tid, tid, uid), commit=True)
+    return jsonify({"ok": True})
+
+
+# ──────────────────────────────────────────────────────────────
+#  API — USER PROFILE & SEARCH
+# ──────────────────────────────────────────────────────────────
+
+@app.route("/api/profile/<username>", methods=["GET"])
+@require_auth
+def api_profile(username):
+    row = query("SELECT * FROM users WHERE username=?", (username,), one=True)
+    if not row:
+        return jsonify({"error": "Không tìm thấy người dùng"}), 404
+    return jsonify({"profile": {
+        "username":    row["username"],
+        "wins":        row["wins"],
+        "losses":      row["losses"],
+        "coins":       row["coins"],
+        "high_streak": row["high_streak"],
+        "games_played":row["games_played"],
+        "created_at":  row["created_at"],
+    }})
+
+
+@app.route("/api/users/search", methods=["GET"])
+@require_auth
+def api_users_search():
+    q   = request.args.get("q", "").strip()
+    uid = g.current_user["id"]
+    if not q or len(q) < 2:
+        return jsonify({"users": []})
+    rows = query("""
+        SELECT username, wins, coins FROM users
+        WHERE username LIKE ? AND id != ?
+        LIMIT 10
+    """, (f"%{q}%", uid))
+    return jsonify({"users": [dict(r) for r in rows]})
 
 @app.route("/api/admin/users", methods=["GET"])
 def api_admin_users():

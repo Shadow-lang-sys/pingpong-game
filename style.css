@@ -522,6 +522,148 @@ body::after {
   letter-spacing: 1px;
 }
 
+/* ─────────────────────────────────────────────────────────
+   MUSIC PLAYER PANEL (dropdown từ nút nhạc trên header)
+───────────────────────────────────────────────────────── */
+.music-player-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 300px;
+  background: var(--surface);
+  border: 1px solid rgba(0,245,255,0.25);
+  border-radius: 12px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5), 0 0 20px rgba(0,245,255,0.06);
+  z-index: 200;
+  overflow: hidden;
+  display: none;
+}
+
+.music-player-panel.open { display: block; }
+
+.mp-now-playing {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,245,255,0.03);
+}
+
+.mp-label {
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: var(--text2);
+  margin-bottom: 10px;
+}
+
+.mp-track-info { margin-bottom: 14px; }
+
+.mp-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  background: rgba(0,245,255,0.1);
+  border: 1px solid rgba(0,245,255,0.3);
+  border-radius: 10px;
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--neon-cyan);
+  margin-bottom: 6px;
+}
+
+.mp-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.mp-author { font-size: 11px; color: var(--text2); }
+
+.mp-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+
+.mp-ctrl-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text);
+}
+
+.mp-ctrl-btn:hover { background: rgba(0,245,255,0.1); border-color: rgba(0,245,255,0.4); }
+
+.mp-ctrl-main {
+  width: 44px;
+  height: 44px;
+  font-size: 16px;
+  background: rgba(0,245,255,0.08);
+  border-color: rgba(0,245,255,0.3);
+}
+
+.mp-tracklist { padding: 12px; }
+
+.mp-tracklist-label {
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: var(--text2);
+  margin-bottom: 8px;
+}
+
+.mp-track-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-bottom: 2px;
+}
+
+.mp-track-item:hover { background: rgba(255,255,255,0.04); }
+
+.mp-track-item.playing {
+  background: rgba(0,245,255,0.08);
+  border: 1px solid rgba(0,245,255,0.2);
+}
+
+.mp-track-num {
+  font-size: 10px;
+  color: var(--text2);
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.mp-track-item.playing .mp-track-num { color: var(--neon-cyan); }
+
+.mp-track-name {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.mp-track-item.playing .mp-track-name { color: var(--neon-cyan); }
+
+.mp-track-tag-sm {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.06);
+  color: var(--text2);
+  letter-spacing: 1px;
+}
+
 /* Nút điều khiển nhạc */
 .music-btn {
   width: 34px;

@@ -235,31 +235,84 @@ function createArpeggioMusic(scale, bpm, vol, oscType = 'square') {
   };
 }
 
-// Định nghĩa các bộ âm thanh
-const SCALES = {
-  menu: [392, 440, 523, 587, 659, 784, 880, 1047],   // G maj arpeggio, nhanh vui
-  game: [220, 277, 330, 370, 440, 554, 659, 740],     // A min arpeggio, căng thẳng
-};
+/* ── Danh sách bài nhạc có sẵn ── */
+const MUSIC_TRACKS = [
+  {
+    id: 'cyber_arcade',
+    name: 'Cyber Arcade',
+    author: 'Neon Pong OST',
+    tag: 'MENU',
+    scale: [392, 440, 523, 587, 659, 784, 880, 1047],
+    bpm: 200, vol: 0.18, osc: 'triangle',
+  },
+  {
+    id: 'battle_zone',
+    name: 'Battle Zone',
+    author: 'Neon Pong OST',
+    tag: 'GAME',
+    scale: [220, 277, 330, 370, 440, 554, 659, 740],
+    bpm: 240, vol: 0.14, osc: 'square',
+  },
+  {
+    id: 'midnight_run',
+    name: 'Midnight Run',
+    author: 'Neon Pong OST',
+    tag: 'CHILL',
+    scale: [261, 311, 370, 392, 466, 523, 622, 740],
+    bpm: 160, vol: 0.16, osc: 'sine',
+  },
+  {
+    id: 'neon_storm',
+    name: 'Neon Storm',
+    author: 'Neon Pong OST',
+    tag: 'INTENSE',
+    scale: [180, 214, 270, 360, 404, 540, 720, 810],
+    bpm: 280, vol: 0.13, osc: 'sawtooth',
+  },
+  {
+    id: 'galaxy_drift',
+    name: 'Galaxy Drift',
+    author: 'Neon Pong OST',
+    tag: 'AMBIENT',
+    scale: [174, 220, 261, 329, 349, 440, 523, 659],
+    bpm: 130, vol: 0.15, osc: 'triangle',
+  },
+  {
+    id: 'retro_wave',
+    name: 'Retro Wave',
+    author: 'Neon Pong OST',
+    tag: 'CLASSIC',
+    scale: [330, 392, 494, 523, 659, 784, 988, 1047],
+    bpm: 210, vol: 0.14, osc: 'square',
+  },
+];
 
-function startMenuMusic() {
-  if (musicMuted || !audioCtx) return;
-  stopAllMusic();
-  menuMusicNodes = createArpeggioMusic(SCALES.menu, 200, 0.18, 'triangle');
-  activeMusic = 'menu';
-}
+let currentTrackIdx  = 0;  // chỉ số bài đang phát
+let currentMusicNode = null;
+let musicPlayerOpen  = false;
 
-function startGameMusic() {
+function startMenuMusic()  { playTrackIdx(0); }
+function startGameMusic()  { playTrackIdx(1); }
+
+function playTrackIdx(idx) {
   if (musicMuted || !audioCtx) return;
+  currentTrackIdx = ((idx % MUSIC_TRACKS.length) + MUSIC_TRACKS.length) % MUSIC_TRACKS.length;
   stopAllMusic();
-  gameMusicNodes = createArpeggioMusic(SCALES.game, 240, 0.14, 'square');
-  activeMusic = 'game';
+  const t = MUSIC_TRACKS[currentTrackIdx];
+  currentMusicNode = createArpeggioMusic(t.scale, t.bpm, t.vol, t.osc);
+  activeMusic = t.id;
+  updateMusicPlayerUI();
 }
 
 function stopAllMusic() {
-  if (menuMusicNodes) { menuMusicNodes.stop(); menuMusicNodes = null; }
-  if (gameMusicNodes) { gameMusicNodes.stop(); gameMusicNodes = null; }
+  if (menuMusicNodes)    { menuMusicNodes.stop();    menuMusicNodes = null; }
+  if (gameMusicNodes)    { gameMusicNodes.stop();    gameMusicNodes = null; }
+  if (currentMusicNode)  { currentMusicNode.stop();  currentMusicNode = null; }
   activeMusic = null;
 }
+
+function nextTrack() { playTrackIdx(currentTrackIdx + 1); }
+function prevTrack() { playTrackIdx(currentTrackIdx - 1); }
 
 function toggleMusic() {
   initAudio();
@@ -275,10 +328,28 @@ function toggleMusic() {
     btn.classList.remove('muted');
     icon.textContent = '♫';
     btn.title = 'Tắt nhạc';
-    // Khôi phục nhạc phù hợp ngữ cảnh
-    if (gameRunning) startGameMusic();
-    else startMenuMusic();
+    playTrackIdx(currentTrackIdx);
   }
+  updateMusicPlayerUI();
+}
+
+function toggleMusicPlayer() {
+  musicPlayerOpen = !musicPlayerOpen;
+  const panel = document.getElementById('music-player-panel');
+  if (panel) panel.classList.toggle('open', musicPlayerOpen);
+  if (musicPlayerOpen) updateMusicPlayerUI();
+}
+
+function updateMusicPlayerUI() {
+  const panel = document.getElementById('music-player-panel');
+  if (!panel) return;
+  const t = MUSIC_TRACKS[currentTrackIdx];
+  panel.querySelector('#mp-title').textContent  = t.name;
+  panel.querySelector('#mp-author').textContent = t.author;
+  panel.querySelector('#mp-tag').textContent    = t.tag;
+  const muteBtn = panel.querySelector('#mp-mute-btn');
+  if (muteBtn) muteBtn.textContent = musicMuted ? '🔇' : '🔊';
+  renderMusicTrackList();
 }
 
 
@@ -288,7 +359,10 @@ function toggleMusic() {
 
 let introReady = false;  // true khi loading bar hoàn thành
 
-function bootIntro() {
+let _introHasSession = false;
+
+function bootIntro(hasSession = false) {
+  _introHasSession = hasSession;
   // Tạo particles
   const container = document.getElementById('intro-particles');
   const colors = ['#00f5ff', '#ff006e', '#ffbe0b', '#06d6a0', '#8338ec'];
@@ -371,16 +445,10 @@ function leaveIntro() {
   const intro = document.getElementById('intro-screen');
   intro.classList.add('fade-out');
 
-  // Kiểm tra session
-  loadDB();
-  const sess = getSession();
-  const target = (sess && db[sess]) ? 'main' : 'auth';
-
   setTimeout(() => {
     intro.classList.add('hidden');
     stopDemoAnimation();
-    if (target === 'main') {
-      currentUser = sess; isGuest = false;
+    if (_introHasSession) {
       enterMainScreen();
     } else {
       document.getElementById('auth-screen').classList.remove('hidden');
@@ -521,46 +589,42 @@ const POWER_ITEMS = [
 
 
 /* ════════════════════════════════════════════════════════════
-   4. STORAGE
+   4. API CLIENT
 ════════════════════════════════════════════════════════════ */
 
-const DB_KEY      = 'neonpong_db';
-const SESSION_KEY = 'neonpong_session';
+const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? 'http://localhost:5000'
+  : window.location.origin;
 
-let db = {};
+const TOKEN_KEY = 'neonpong_token';
+function getToken()   { return localStorage.getItem(TOKEN_KEY); }
+function saveToken(t) { localStorage.setItem(TOKEN_KEY, t); }
+function clearToken() { localStorage.removeItem(TOKEN_KEY); }
 
-function loadDB() {
-  try { db = JSON.parse(localStorage.getItem(DB_KEY)) || {}; }
-  catch(e) { db = {}; }
+async function api(method, path, body = null) {
+  const headers = { 'Content-Type': 'application/json' };
+  const token   = getToken();
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+  const res  = await fetch(API_BASE + path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Lỗi server');
+  return data;
 }
 
-function saveDB() {
-  localStorage.setItem(DB_KEY, JSON.stringify(db));
-}
-
-function getUser(u)    { return db[u] || null; }
-
-function createUser(u, p) {
-  db[u] = {
-    username:u, password:btoa(p), coins:100,
-    wins:0, losses:0, ballsHit:0, highStreak:0, gamesPlayed:0,
-    ownedBalls:['default'], ownedPaddles:['default'], powers:{},
-    equippedBall:'default', equippedPaddle:'default',
-    lastDaily:0, dailyStreak:0, createdAt:Date.now()
-  };
-  saveDB();
-}
-
-function saveSession(u) { localStorage.setItem(SESSION_KEY, u); }
-function getSession()   { return localStorage.getItem(SESSION_KEY); }
-function clearSession() { localStorage.removeItem(SESSION_KEY); }
-
+// legacy stubs (không còn dùng localStorage cho game data)
+function loadDB() {}
+function saveDB() {}
+const DB_KEY      = 'neonpong_db_unused';
+const SESSION_KEY = 'neonpong_session_unused';
 
 /* ════════════════════════════════════════════════════════════
    5. AUTH
 ════════════════════════════════════════════════════════════ */
 
-let currentUser = null;
+let currentUser = null;   // username string
+let userData    = null;   // full profile object từ server
 let isGuest     = false;
 
 function switchAuthTab(t) {
@@ -578,46 +642,54 @@ function showAuthMsg(msg, type) {
   el.className   = 'auth-msg ' + (type || 'error');
 }
 
-function doLogin() {
+async function doLogin() {
   const u = document.getElementById('login-user').value.trim();
   const p = document.getElementById('login-pass').value;
   if (!u || !p) { showAuthMsg('Vui lòng điền đầy đủ thông tin'); return; }
-  loadDB();
-  const usr = getUser(u);
-  if (!usr || usr.password !== btoa(p)) { showAuthMsg('Sai tên đăng nhập hoặc mật khẩu'); return; }
-  currentUser = u; isGuest = false;
-  saveSession(u);
-  enterMainScreen();
+  showAuthMsg('Đang đăng nhập...', 'success');
+  try {
+    const res   = await api('POST', '/api/login', { username: u, password: p });
+    saveToken(res.token);
+    currentUser = res.user.username;
+    userData    = res.user;
+    isGuest     = false;
+    enterMainScreen();
+  } catch(e) { showAuthMsg(e.message); }
 }
 
-function doRegister() {
+async function doRegister() {
   const u  = document.getElementById('reg-user').value.trim();
   const p  = document.getElementById('reg-pass').value;
   const p2 = document.getElementById('reg-pass2').value;
   if (!u || !p || !p2) { showAuthMsg('Vui lòng điền đầy đủ thông tin'); return; }
-  if (u.length < 3)    { showAuthMsg('Tên đăng nhập phải có ít nhất 3 ký tự'); return; }
-  if (p.length < 4)    { showAuthMsg('Mật khẩu phải có ít nhất 4 ký tự'); return; }
   if (p !== p2)        { showAuthMsg('Mật khẩu không khớp'); return; }
-  loadDB();
-  if (getUser(u))      { showAuthMsg('Tên đăng nhập đã tồn tại'); return; }
-  createUser(u, p);
-  showAuthMsg('Tạo tài khoản thành công! Đang đăng nhập...', 'success');
-  setTimeout(() => {
-    currentUser = u; isGuest = false;
-    saveSession(u);
-    enterMainScreen();
-  }, 800);
+  showAuthMsg('Đang tạo tài khoản...', 'success');
+  try {
+    const res   = await api('POST', '/api/register', { username: u, password: p, confirm: p2 });
+    saveToken(res.token);
+    currentUser = res.user.username;
+    userData    = res.user;
+    isGuest     = false;
+    showAuthMsg('Tạo tài khoản thành công!', 'success');
+    setTimeout(enterMainScreen, 600);
+  } catch(e) { showAuthMsg(e.message); }
 }
 
 function playAsGuest() {
-  currentUser = 'KHÁCH'; isGuest = true;
+  currentUser = 'KHÁCH';
+  userData    = { username:'KHÁCH', coins:0, wins:0, losses:0, high_streak:0,
+                  games_played:0, owned_balls:['default'], owned_paddles:['default'],
+                  powers:{}, equipped_ball:'default', equipped_paddle:'default',
+                  last_daily:0, daily_streak:0 };
+  isGuest = true;
   enterMainScreen();
 }
 
-function doLogout() {
+async function doLogout() {
   stopGame(); stopAllMusic();
-  currentUser = null; isGuest = false;
-  clearSession();
+  try { if (!isGuest) await api('POST', '/api/logout'); } catch(e) {}
+  clearToken();
+  currentUser = null; userData = null; isGuest = false;
   document.getElementById('main-screen').classList.add('hidden');
   document.getElementById('auth-screen').classList.remove('hidden');
   document.getElementById('auth-msg').textContent = '';
@@ -644,36 +716,51 @@ function enterMainScreen() {
   checkDailyReward();
   resetGame();
   switchPanel('game');
-  // Đổi sang nhạc menu
   if (activeMusic !== 'menu') startMenuMusic();
+  // Render danh sách bài trong music player
+  renderMusicTrackList();
+  // Đóng music panel khi click ra ngoài
+  document.addEventListener('click', e => {
+    const panel = document.getElementById('music-player-panel');
+    const btn   = document.getElementById('music-btn');
+    if (panel && !panel.contains(e.target) && !btn.contains(e.target)) {
+      panel.classList.remove('open');
+      musicPlayerOpen = false;
+    }
+  }, { capture: false });
+}
+
+function renderMusicTrackList() {
+  const cont = document.getElementById('mp-tracks');
+  if (!cont) return;
+  cont.innerHTML = MUSIC_TRACKS.map((t, i) => `
+    <div class="mp-track-item ${i === currentTrackIdx ? 'playing' : ''}"
+         onclick="playTrackIdx(${i})">
+      <div class="mp-track-num">${i === currentTrackIdx ? '▶' : (i+1)}</div>
+      <div class="mp-track-name">${t.name}</div>
+      <div class="mp-track-tag-sm">${t.tag}</div>
+    </div>`).join('');
 }
 
 function syncUserData() {
-  if (isGuest) { equippedBall='default'; equippedPaddle='default'; powers={}; return; }
-  const u      = db[currentUser];
-  equippedBall   = u.equippedBall   || 'default';
-  equippedPaddle = u.equippedPaddle || 'default';
-  powers         = u.powers         || {};
+  equippedBall   = userData.equipped_ball   || 'default';
+  equippedPaddle = userData.equipped_paddle || 'default';
+  powers         = userData.powers          || {};
 }
 
 function updateHeader() {
   document.getElementById('hdr-user').textContent  = currentUser;
-  const coins = isGuest ? 0 : (db[currentUser]?.coins || 0);
-  document.getElementById('hdr-coins').textContent = coins;
+  document.getElementById('hdr-coins').textContent = isGuest ? 0 : (userData?.coins || 0);
 }
 
-function addCoins(n) {
+async function addCoins(n) {
   if (isGuest) { showToast('+' + n + ' XU (không lưu ở chế độ khách)', 'info'); return; }
-  db[currentUser].coins = (db[currentUser].coins || 0) + n;
-  saveDB(); updateHeader();
-}
-
-function spendCoins(n) {
-  if (isGuest) { showToast('Đăng nhập để mua vật phẩm', 'error'); return false; }
-  if ((db[currentUser].coins || 0) < n) { showToast('Không đủ xu!', 'error'); return false; }
-  db[currentUser].coins -= n;
-  saveDB(); updateHeader();
-  return true;
+  userData.coins = (userData.coins || 0) + n;
+  updateHeader();
+  try {
+    const res = await api('POST', '/api/coins/add', { amount: n });
+    userData.coins = res.coins; updateHeader();
+  } catch(e) {}
 }
 
 
@@ -874,36 +961,32 @@ function updateScoreDisplay() {
   document.getElementById('score-right').textContent = scoreRight;
 }
 
-function endGame(winner) {
+async function endGame(winner) {
   gameRunning = false;
   stopAllMusic();
-
   const isWin = (gameMode==='ai' && winner==='Bạn') || gameMode==='2p';
-  let coinsEarned = 0;
-
-  if (!isGuest) {
-    if (isWin) {
-      coinsEarned = 50; addCoins(50);
-      db[currentUser].wins = (db[currentUser].wins || 0) + 1;
-    } else {
-      db[currentUser].losses = (db[currentUser].losses || 0) + 1;
-    }
-    db[currentUser].gamesPlayed  = (db[currentUser].gamesPlayed  || 0) + 1;
-    db[currentUser].highStreak   = Math.max(db[currentUser].highStreak || 0, combo);
-    saveDB();
-  }
-
-  // Âm thanh kết thúc
   if (isWin) sfxWin(); else sfxLose();
 
-  // Hiển thị overlay
-  const ov = document.getElementById('win-overlay');
+  let coinsEarned = 0;
+  if (!isGuest) {
+    try {
+      const res = await api('POST', '/api/game/result', {
+        result:     isWin ? 'win' : 'loss',
+        score_mine: scoreLeft,
+        score_opp:  scoreRight,
+        combo, mode: gameMode
+      });
+      coinsEarned = res.coins_earned || 0;
+      userData    = res.user;
+      updateHeader();
+    } catch(e) { showToast('Lỗi lưu kết quả: ' + e.message, 'error'); }
+  }
+
   document.getElementById('win-title').textContent  = winner + ' THẮNG!';
   document.getElementById('win-title').style.color  = isWin ? 'var(--neon-cyan)' : 'var(--neon-pink)';
   document.getElementById('win-reward').textContent = coinsEarned > 0 ? '+' + coinsEarned + ' XU' : '';
   document.getElementById('win-stats').textContent  = 'TỶ SỐ: ' + scoreLeft + ' - ' + scoreRight + '  •  CHUỖI: ' + combo;
-  ov.classList.remove('hidden');
-
+  document.getElementById('win-overlay').classList.remove('hidden');
   renderStats();
 }
 
@@ -984,7 +1067,7 @@ function renderShop() {
 
 function renderBallShop() {
   const el    = document.getElementById('ball-shop');
-  const owned = isGuest ? ['default'] : (db[currentUser]?.ownedBalls || ['default']);
+  const owned = userData?.owned_balls || ['default'];
   el.innerHTML = BALL_SKINS.map(s => {
     const isOwned = owned.includes(s.id);
     const isEq    = equippedBall === s.id;
@@ -1004,7 +1087,7 @@ function renderBallShop() {
 
 function renderPaddleShop() {
   const el    = document.getElementById('paddle-shop');
-  const owned = isGuest ? ['default'] : (db[currentUser]?.ownedPaddles || ['default']);
+  const owned = userData?.owned_paddles || ['default'];
   el.innerHTML = PADDLE_SKINS.map(s => {
     const isOwned = owned.includes(s.id);
     const isEq    = equippedPaddle === s.id;
@@ -1024,7 +1107,7 @@ function renderPaddleShop() {
 
 function renderPowerShop() {
   const el = document.getElementById('power-shop');
-  const pw = isGuest ? {} : (db[currentUser]?.powers || {});
+  const pw = userData?.powers || {};
   el.innerHTML = POWER_ITEMS.map(s => {
     const qty = pw[s.id] || 0;
     return `
@@ -1038,10 +1121,9 @@ function renderPowerShop() {
 }
 
 function renderPowerBar() {
-  const bar = document.getElementById('power-bar');
-  const pw  = isGuest ? {} : (db[currentUser]?.powers || {});
+  const bar   = document.getElementById('power-bar');
+  const pw    = userData?.powers || {};
   const items = POWER_ITEMS.filter(p => (pw[p.id] || 0) > 0);
-
   if (items.length === 0) {
     bar.innerHTML = '<span style="font-size:11px;color:var(--text2);letter-spacing:2px">Không có vật phẩm • Mua ở Cửa Hàng</span>';
   } else {
@@ -1057,60 +1139,68 @@ function renderPowerBar() {
   }
 }
 
-function buyOrEquipBall(id) {
+async function buyOrEquipBall(id) {
   const skin = BALL_SKINS.find(s => s.id === id); if (!skin) return;
   if (isGuest) { showToast('Đăng nhập để mua skin', 'error'); return; }
-  const owned = db[currentUser].ownedBalls || ['default'];
-  if (owned.includes(id)) {
-    equippedBall = id; db[currentUser].equippedBall = id;
-    saveDB(); renderBallShop();
-    showToast('Đã trang bị ' + skin.name, 'success');
-  } else {
-    if (!spendCoins(skin.price)) return;
-    db[currentUser].ownedBalls = [...owned, id];
-    db[currentUser].equippedBall = id; equippedBall = id;
-    saveDB(); renderBallShop();
-    sfxBuy(); showToast('Mua thành công ' + skin.name, 'success');
-  }
+  const owned = userData.owned_balls || ['default'];
+  try {
+    if (owned.includes(id)) {
+      const res  = await api('POST', '/api/shop/equip/ball', { skin_id: id });
+      userData.equipped_ball = res.equipped_ball;
+      equippedBall = id;
+      showToast('Đã trang bị ' + skin.name, 'success');
+    } else {
+      const res  = await api('POST', '/api/shop/buy/ball', { skin_id: id });
+      userData   = res.user;
+      equippedBall = id;
+      sfxBuy(); showToast('Mua thành công ' + skin.name, 'success');
+    }
+    syncUserData(); renderBallShop(); updateHeader();
+  } catch(e) { showToast(e.message, 'error'); }
 }
 
-function buyOrEquipPaddle(id) {
+async function buyOrEquipPaddle(id) {
   const skin = PADDLE_SKINS.find(s => s.id === id); if (!skin) return;
   if (isGuest) { showToast('Đăng nhập để mua skin', 'error'); return; }
-  const owned = db[currentUser].ownedPaddles || ['default'];
-  if (owned.includes(id)) {
-    equippedPaddle = id; db[currentUser].equippedPaddle = id;
-    saveDB(); renderPaddleShop();
-    showToast('Đã trang bị ' + skin.name, 'success');
-  } else {
-    if (!spendCoins(skin.price)) return;
-    db[currentUser].ownedPaddles = [...owned, id];
-    db[currentUser].equippedPaddle = id; equippedPaddle = id;
-    saveDB(); renderPaddleShop();
-    sfxBuy(); showToast('Mua thành công ' + skin.name, 'success');
-  }
+  const owned = userData.owned_paddles || ['default'];
+  try {
+    if (owned.includes(id)) {
+      const res  = await api('POST', '/api/shop/equip/paddle', { skin_id: id });
+      userData.equipped_paddle = res.equipped_paddle;
+      equippedPaddle = id;
+      showToast('Đã trang bị ' + skin.name, 'success');
+    } else {
+      const res  = await api('POST', '/api/shop/buy/paddle', { skin_id: id });
+      userData   = res.user;
+      equippedPaddle = id;
+      sfxBuy(); showToast('Mua thành công ' + skin.name, 'success');
+    }
+    syncUserData(); renderPaddleShop(); updateHeader();
+  } catch(e) { showToast(e.message, 'error'); }
 }
 
-function buyPower(id) {
+async function buyPower(id) {
   if (isGuest) { showToast('Đăng nhập để mua vật phẩm', 'error'); return; }
-  const p = POWER_ITEMS.find(x => x.id === id);
-  if (!spendCoins(p.price)) return;
-  db[currentUser].powers = db[currentUser].powers || {};
-  db[currentUser].powers[id] = (db[currentUser].powers[id] || 0) + 1;
-  powers = db[currentUser].powers;
-  saveDB(); renderPowerShop(); renderPowerBar();
-  sfxBuy(); showToast('Mua thành công ' + p.name, 'success');
+  try {
+    const res = await api('POST', '/api/shop/buy/power', { power_id: id });
+    userData  = res.user;
+    powers    = userData.powers;
+    syncUserData(); renderPowerShop(); renderPowerBar(); updateHeader();
+    sfxBuy(); showToast('Mua thành công ' + POWER_ITEMS.find(x=>x.id===id)?.name, 'success');
+  } catch(e) { showToast(e.message, 'error'); }
 }
 
-function usePower(id) {
+async function usePower(id) {
   if (!gameRunning) { showToast('Hãy bắt đầu game trước', 'error'); return; }
   if (isGuest) return;
-  const p = POWER_ITEMS.find(x => x.id === id);
-  if (!db[currentUser].powers[id] || db[currentUser].powers[id] <= 0) {
-    showToast('Không còn ' + p.name, 'error'); return;
-  }
-  db[currentUser].powers[id]--;
-  powers = db[currentUser].powers; saveDB();
+  const p  = POWER_ITEMS.find(x => x.id === id);
+  const pw = userData?.powers || {};
+  if (!pw[id] || pw[id] <= 0) { showToast('Không còn ' + p.name, 'error'); return; }
+  try {
+    const res = await api('POST', '/api/shop/use/power', { power_id: id });
+    userData  = res.user;
+    powers    = userData.powers;
+  } catch(e) { showToast(e.message, 'error'); return; }
 
   if (powerTimeout) clearTimeout(powerTimeout);
   activePower = id;
@@ -1129,42 +1219,39 @@ function usePower(id) {
   showToast('Kích hoạt: ' + p.name, 'success');
 }
 
-function checkDailyReward() {
+async function checkDailyReward() {
   if (isGuest) {
-    document.getElementById('daily-btn').disabled = true;
-    document.getElementById('daily-sub').textContent = 'Đăng nhập để nhận thưởng hàng ngày';
+    document.getElementById('daily-btn').disabled     = true;
+    document.getElementById('daily-sub').textContent  = 'Đăng nhập để nhận thưởng hàng ngày';
     return;
   }
-  const u = db[currentUser];
-  const now = Date.now();
-  const last = u.lastDaily || 0;
-  const ONE_DAY = 86400000;
-  if (now - last < ONE_DAY) {
-    const remain = ONE_DAY - (now - last);
+  const lastDaily  = (userData.last_daily  || 0) * 1000;
+  const now        = Date.now();
+  const ONE_DAY_MS = 86400000;
+  if (now - lastDaily < ONE_DAY_MS) {
+    const remain = ONE_DAY_MS - (now - lastDaily);
     const h = Math.floor(remain / 3600000);
     const m = Math.floor((remain % 3600000) / 60000);
     document.getElementById('daily-sub').textContent = `Đã nhận hôm nay. Còn ${h}h ${m}m`;
-    document.getElementById('daily-btn').disabled = true;
+    document.getElementById('daily-btn').disabled    = true;
   } else {
-    const streak = u.dailyStreak || 0;
+    const streak = userData.daily_streak || 0;
     const bonus  = 30 + streak * 5;
-    document.getElementById('daily-sub').textContent = `Chuỗi đăng nhập: ${streak} ngày  •  Nhận +${bonus} xu hôm nay!`;
-    document.getElementById('daily-btn').disabled = false;
+    document.getElementById('daily-sub').textContent = `Chuỗi: ${streak} ngày  •  Nhận +${bonus} xu hôm nay!`;
+    document.getElementById('daily-btn').disabled    = false;
   }
 }
 
-function claimDaily() {
+async function claimDaily() {
   if (isGuest) return;
-  const u      = db[currentUser];
-  const streak = (u.dailyStreak || 0) + 1;
-  const bonus  = 30 + streak * 5;
-  u.lastDaily    = Date.now();
-  u.dailyStreak  = streak;
-  u.coins        = (u.coins || 0) + bonus;
-  saveDB(); updateHeader();
-  sfxBuy();
-  showToast(`Nhận thưởng hàng ngày: +${bonus} xu! (Chuỗi: ${streak} ngày)`, 'success');
-  checkDailyReward();
+  try {
+    const res = await api('POST', '/api/daily');
+    userData  = res.user;
+    updateHeader(); syncUserData();
+    sfxBuy();
+    showToast(`Nhận thưởng: +${res.bonus} xu! (Chuỗi: ${res.streak} ngày)`, 'success');
+    checkDailyReward();
+  } catch(e) { showToast(e.message, 'error'); }
 }
 
 
@@ -1172,49 +1259,389 @@ function claimDaily() {
    10. STATS & LEADERBOARD
 ════════════════════════════════════════════════════════════ */
 
-function renderStats() {
+async function renderStats() {
   if (isGuest) {
-    document.getElementById('stats-grid').innerHTML  = '<p style="color:var(--text2);font-size:12px">Đăng nhập để xem thống kê</p>';
+    document.getElementById('stats-grid').innerHTML  = '<p style="color:var(--text2);font-size:12px">Đăng nhập để xem thống kê của bạn</p>';
     document.getElementById('leaderboard').innerHTML = '';
     return;
   }
-  const u = db[currentUser];
+  const u = userData;
   const stats = [
-    { label:'TRẬN THẮNG',     value: u.wins || 0,        color:'var(--neon-cyan)'   },
-    { label:'TRẬN THUA',      value: u.losses || 0,      color:'var(--neon-pink)'   },
-    { label:'TỔNG XU',        value: u.coins || 0,       color:'var(--neon-yellow)' },
-    { label:'CHUỖI CAO NHẤT', value: u.highStreak || 0,  color:'var(--neon-purple)' },
-    { label:'TỔNG TRẬN',      value: u.gamesPlayed || 0, color:'var(--neon-green)'  },
-    { label:'TỶ LỆ THẮNG',   value: u.gamesPlayed
-        ? Math.round((u.wins || 0) / u.gamesPlayed * 100) + '%' : '0%',
-      color:'var(--text)' },
+    { label:'TRẬN THẮNG',     value: u.wins         || 0, color:'var(--neon-cyan)'   },
+    { label:'TRẬN THUA',      value: u.losses        || 0, color:'var(--neon-pink)'   },
+    { label:'TỔNG XU',        value: u.coins         || 0, color:'var(--neon-yellow)' },
+    { label:'CHUỖI CAO NHẤT', value: u.high_streak   || 0, color:'var(--neon-purple)' },
+    { label:'TỔNG TRẬN',      value: u.games_played  || 0, color:'var(--neon-green)'  },
+    { label:'TỶ LỆ THẮNG',   value: u.games_played
+        ? Math.round((u.wins||0)/u.games_played*100)+'%' : '0%', color:'var(--text)' },
   ];
-
   document.getElementById('stats-grid').innerHTML = stats.map(s => `
     <div class="stat-card">
       <div class="stat-label">${s.label}</div>
       <div class="stat-value" style="color:${s.color}">${s.value}</div>
     </div>`).join('');
-
-  const users = Object.values(db).sort((a, b) => (b.wins || 0) - (a.wins || 0)).slice(0, 10);
-  document.getElementById('leaderboard').innerHTML =
-    `<tr><th>HẠNG</th><th>TÊN</th><th>THẮNG</th><th>XU</th><th>CHUỖI</th></tr>` +
-    users.map((u, i) => {
-      const cls = ['rank-1','rank-2','rank-3'][i] || 'rank-n';
-      return `<tr>
-        <td><span class="rank-badge ${cls}">${i+1}</span></td>
-        <td style="color:${u.username===currentUser?'var(--neon-cyan)':'var(--text)'}">${u.username}${u.username===currentUser?' (bạn)':''}</td>
-        <td style="color:var(--neon-green)">${u.wins||0}</td>
-        <td style="color:var(--neon-yellow)">${u.coins||0}</td>
-        <td style="color:var(--neon-purple)">${u.highStreak||0}</td>
-      </tr>`;
-    }).join('');
+  // Leaderboard nhỏ gọn trong stats
+  try {
+    const res = await api('GET', '/api/leaderboard');
+    document.getElementById('leaderboard').innerHTML =
+      `<tr><th>HẠNG</th><th>TÊN</th><th>THẮNG</th><th>XU</th><th>CHUỖI</th></tr>` +
+      res.leaderboard.slice(0,5).map((u, i) => {
+        const cls  = ['rank-1','rank-2','rank-3'][i] || 'rank-n';
+        const isMe = u.username === currentUser;
+        return `<tr>
+          <td><span class="rank-badge ${cls}">${i+1}</span></td>
+          <td style="color:${isMe?'var(--neon-cyan)':'var(--text)'};cursor:pointer"
+              onclick="viewProfile('${u.username}')">${u.username}${isMe?' (bạn)':''}</td>
+          <td style="color:var(--neon-green)">${u.wins||0}</td>
+          <td style="color:var(--neon-yellow)">${u.coins||0}</td>
+          <td style="color:var(--neon-purple)">${u.high_streak||0}</td>
+        </tr>`;
+      }).join('') +
+      `<tr><td colspan="5" style="text-align:center;padding:10px;">
+        <span style="font-size:11px;color:var(--neon-cyan);cursor:pointer;letter-spacing:1px"
+              onclick="switchPanel('friends')">XEM ĐẦY ĐỦ →</span>
+      </td></tr>`;
+  } catch(e) {
+    document.getElementById('leaderboard').innerHTML =
+      '<tr><td colspan="5" style="color:var(--text2);padding:16px;text-align:center">Không thể tải</td></tr>';
+  }
 }
 
 
 /* ════════════════════════════════════════════════════════════
-   11. TOAST
+   10b. KẾT BẠN
 ════════════════════════════════════════════════════════════ */
+
+let friendsData    = { friends: [], sent: [], received: [] };
+let friendsTabOpen = 'leaderboard';  // 'leaderboard' | 'friends' | 'requests'
+
+async function loadFriends() {
+  if (isGuest) return;
+  try {
+    const res  = await api('GET', '/api/friends');
+    friendsData = res;
+  } catch(e) { /* silent */ }
+}
+
+async function sendFriendRequest(username) {
+  if (isGuest) { showToast('Đăng nhập để kết bạn', 'error'); return; }
+  if (username === currentUser) { showToast('Không thể kết bạn với chính mình', 'error'); return; }
+  try {
+    await api('POST', '/api/friends/request', { to_username: username });
+    showToast('Đã gửi lời mời tới ' + username, 'success');
+    sfxBuy();
+    await loadFriends();
+    renderFriendsTabs();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function respondFriendRequest(fromUsername, accept) {
+  try {
+    await api('POST', '/api/friends/respond', { from_username: fromUsername, accept });
+    showToast(accept ? 'Đã chấp nhận lời mời từ ' + fromUsername : 'Đã từ chối', accept ? 'success' : 'info');
+    if (accept) sfxBuy();
+    await loadFriends();
+    renderFriendsTabs();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function removeFriend(username) {
+  try {
+    await api('POST', '/api/friends/remove', { username });
+    showToast('Đã xoá bạn ' + username, 'info');
+    await loadFriends();
+    renderFriendsTabs();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function viewProfile(username) {
+  try {
+    const res = await api('GET', '/api/profile/' + username);
+    showProfileModal(res.profile);
+  } catch(e) { showToast('Không thể tải profile', 'error'); }
+}
+
+function showProfileModal(p) {
+  const existing = document.getElementById('profile-modal');
+  if (existing) existing.remove();
+
+  const isFriend = friendsData.friends.some(f => f.username === p.username);
+  const isSent   = friendsData.sent.some(f => f.username === p.username);
+  const isMe     = p.username === currentUser;
+
+  const modal = document.createElement('div');
+  modal.id = 'profile-modal';
+  modal.style.cssText = `
+    position:fixed;inset:0;z-index:500;
+    background:rgba(3,7,18,0.85);
+    display:flex;align-items:center;justify-content:center;
+  `;
+  modal.innerHTML = `
+    <div style="background:var(--surface);border:1px solid rgba(0,245,255,0.3);border-radius:16px;
+                padding:32px;width:360px;max-width:90vw;position:relative;">
+      <button onclick="document.getElementById('profile-modal').remove()"
+              style="position:absolute;top:12px;right:12px;background:transparent;border:none;
+                     color:var(--text2);font-size:20px;cursor:pointer;line-height:1;">×</button>
+
+      <!-- Avatar -->
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="width:72px;height:72px;border-radius:50%;
+                    background:linear-gradient(135deg,var(--neon-cyan),var(--neon-purple));
+                    display:flex;align-items:center;justify-content:center;
+                    font-family:'Orbitron',monospace;font-size:24px;font-weight:900;
+                    color:#fff;margin:0 auto 12px;">
+          ${p.username[0].toUpperCase()}
+        </div>
+        <div style="font-family:'Orbitron',monospace;font-size:16px;font-weight:700;color:var(--neon-cyan);">
+          ${p.username}
+        </div>
+        <div style="font-size:11px;color:var(--text2);letter-spacing:2px;margin-top:4px;">
+          Tham gia ${new Date(p.created_at * 1000).toLocaleDateString('vi-VN')}
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:20px;">
+        ${[
+          ['THẮNG', p.wins||0, 'var(--neon-cyan)'],
+          ['XU', p.coins||0, 'var(--neon-yellow)'],
+          ['CHUỖI', p.high_streak||0, 'var(--neon-purple)'],
+        ].map(([label, val, color]) => `
+          <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);
+                      border-radius:8px;padding:10px;text-align:center;">
+            <div style="font-size:10px;color:var(--text2);letter-spacing:1px;margin-bottom:4px;">${label}</div>
+            <div style="font-family:'Orbitron',monospace;font-size:18px;font-weight:700;color:${color};">${val}</div>
+          </div>`).join('')}
+      </div>
+
+      <!-- Action button -->
+      ${isMe ? '' : isFriend
+        ? `<button onclick="removeFriend('${p.username}');document.getElementById('profile-modal').remove()"
+                   style="width:100%;padding:11px;background:rgba(255,0,110,0.1);
+                          border:1px solid rgba(255,0,110,0.4);border-radius:8px;
+                          color:var(--neon-pink);font-family:'Share Tech Mono',monospace;
+                          font-size:12px;letter-spacing:2px;cursor:pointer;">
+             XOÁ BẠN BÈ
+           </button>`
+        : isSent
+        ? `<button disabled style="width:100%;padding:11px;background:rgba(255,255,255,0.04);
+                          border:1px solid var(--border);border-radius:8px;
+                          color:var(--text2);font-family:'Share Tech Mono',monospace;
+                          font-size:12px;letter-spacing:2px;">
+             ĐÃ GỬI LỜI MỜI
+           </button>`
+        : `<button onclick="sendFriendRequest('${p.username}');document.getElementById('profile-modal').remove()"
+                   style="width:100%;padding:11px;background:rgba(0,245,255,0.1);
+                          border:1px solid rgba(0,245,255,0.4);border-radius:8px;
+                          color:var(--neon-cyan);font-family:'Share Tech Mono',monospace;
+                          font-size:12px;letter-spacing:2px;cursor:pointer;">
+             + KẾT BẠN
+           </button>`}
+    </div>
+  `;
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+function renderFriendsTabs() {
+  const container = document.getElementById('friends-section');
+  if (!container) return;
+
+  const tabs = ['leaderboard','friends','requests'];
+  const labels = ['🌍 Toàn cầu', '👥 Bạn bè', `🔔 Lời mời${friendsData.received?.length ? ' ('+friendsData.received.length+')' : ''}`];
+
+  container.innerHTML = `
+    <!-- Tab switcher -->
+    <div style="display:flex;gap:0;margin-bottom:16px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+      ${tabs.map((t,i) => `
+        <button onclick="setFriendsTab('${t}')" id="ftab-${t}"
+                style="flex:1;padding:9px 4px;background:${friendsTabOpen===t?'rgba(0,245,255,0.1)':'transparent'};
+                       border:none;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:11px;
+                       letter-spacing:1px;color:${friendsTabOpen===t?'var(--neon-cyan)':'var(--text2)'};
+                       border-bottom:${friendsTabOpen===t?'2px solid var(--neon-cyan)':'2px solid transparent'};">
+          ${labels[i]}
+        </button>`).join('')}
+    </div>
+    <div id="friends-tab-content"></div>
+  `;
+  renderFriendsTabContent();
+}
+
+async function setFriendsTab(tab) {
+  friendsTabOpen = tab;
+  renderFriendsTabs();
+  if (tab === 'leaderboard') renderGlobalLeaderboard();
+  else if (tab === 'friends') renderFriendsList();
+  else renderFriendRequests();
+}
+
+async function renderGlobalLeaderboard() {
+  const cont = document.getElementById('friends-tab-content');
+  if (!cont) return;
+
+  // Search box
+  cont.innerHTML = `
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <input id="user-search" placeholder="Tìm người chơi để kết bạn..."
+             oninput="searchUsers(this.value)"
+             style="flex:1;padding:10px 14px;background:rgba(255,255,255,0.03);
+                    border:1px solid var(--border);border-radius:8px;
+                    color:var(--text);font-family:'Share Tech Mono',monospace;font-size:12px;outline:none;">
+    </div>
+    <div id="search-results"></div>
+    <table class="leaderboard-table" id="leaderboard"></table>
+  `;
+  try {
+    const res = await api('GET', '/api/leaderboard');
+    document.getElementById('leaderboard').innerHTML =
+      `<tr><th>HẠNG</th><th>TÊN</th><th>THẮNG</th><th>XU</th><th>CHUỖI</th><th></th></tr>` +
+      res.leaderboard.map((u, i) => {
+        const cls    = ['rank-1','rank-2','rank-3'][i] || 'rank-n';
+        const isMe   = !isGuest && u.username === currentUser;
+        const isFr   = friendsData.friends?.some(f => f.username === u.username);
+        const isSent = friendsData.sent?.some(f => f.username === u.username);
+        return `<tr>
+          <td><span class="rank-badge ${cls}">${i+1}</span></td>
+          <td><span style="color:${isMe?'var(--neon-cyan)':'var(--text)'};cursor:pointer"
+                    onclick="viewProfile('${u.username}')">${u.username}${isMe?' (bạn)':''}</span></td>
+          <td style="color:var(--neon-green)">${u.wins||0}</td>
+          <td style="color:var(--neon-yellow)">${u.coins||0}</td>
+          <td style="color:var(--neon-purple)">${u.high_streak||0}</td>
+          <td>${isMe||isFr ? '' : isSent
+              ? `<span style="font-size:10px;color:var(--text2)">Đã gửi</span>`
+              : `<button onclick="sendFriendRequest('${u.username}')"
+                         style="padding:4px 10px;background:rgba(0,245,255,0.08);
+                                border:1px solid rgba(0,245,255,0.3);border-radius:5px;
+                                color:var(--neon-cyan);font-size:10px;cursor:pointer;
+                                font-family:'Share Tech Mono',monospace;">+KẾT BẠN</button>`}
+          </td>
+        </tr>`;
+      }).join('');
+  } catch(e) {
+    const lb = document.getElementById('leaderboard');
+    if (lb) lb.innerHTML = '<tr><td colspan="6" style="color:var(--text2);padding:16px;text-align:center">Không thể tải</td></tr>';
+  }
+}
+
+let searchTimer = null;
+async function searchUsers(q) {
+  const cont = document.getElementById('search-results');
+  if (!cont) return;
+  if (!q.trim()) { cont.innerHTML = ''; return; }
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    try {
+      const res = await api('GET', '/api/users/search?q=' + encodeURIComponent(q));
+      cont.innerHTML = res.users.length === 0
+        ? `<div style="font-size:12px;color:var(--text2);margin-bottom:8px;">Không tìm thấy người dùng</div>`
+        : `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">` +
+          res.users.map(u => {
+            const isMe   = u.username === currentUser;
+            const isFr   = friendsData.friends?.some(f => f.username === u.username);
+            const isSent = friendsData.sent?.some(f => f.username === u.username);
+            return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;
+                                background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;">
+              <span style="font-size:13px;color:var(--text);cursor:pointer"
+                    onclick="viewProfile('${u.username}')">${u.username}</span>
+              <span style="font-size:10px;color:var(--neon-green)">W:${u.wins||0}</span>
+              ${isMe||isFr ? '' : isSent
+                ? `<span style="font-size:10px;color:var(--text2)">Đã gửi</span>`
+                : `<button onclick="sendFriendRequest('${u.username}')"
+                           style="padding:3px 8px;background:rgba(0,245,255,0.08);
+                                  border:1px solid rgba(0,245,255,0.3);border-radius:5px;
+                                  color:var(--neon-cyan);font-size:10px;cursor:pointer;
+                                  font-family:'Share Tech Mono',monospace;">+KẾT BẠN</button>`}
+            </div>`;
+          }).join('') + `</div>`;
+    } catch(e) {}
+  }, 400);
+}
+
+function renderFriendsList() {
+  const cont = document.getElementById('friends-tab-content');
+  if (!cont) return;
+  const friends = friendsData.friends || [];
+  if (friends.length === 0) {
+    cont.innerHTML = `<div style="text-align:center;padding:32px;color:var(--text2);font-size:13px;">
+      Chưa có bạn bè nào. Tìm kiếm và gửi lời mời ở tab Toàn cầu!
+    </div>`;
+    return;
+  }
+  // Sắp xếp theo wins
+  const sorted = [...friends].sort((a,b) => (b.wins||0)-(a.wins||0));
+  cont.innerHTML = `
+    <div style="font-size:11px;color:var(--text2);letter-spacing:2px;margin-bottom:12px;">
+      BẢNG XẾP HẠNG BẠN BÈ — ${sorted.length} NGƯỜI
+    </div>
+    <table class="leaderboard-table">
+      <tr><th>HẠNG</th><th>TÊN</th><th>THẮNG</th><th>XU</th><th>CHUỖI</th><th></th></tr>
+      ${sorted.map((u, i) => {
+        const cls  = ['rank-1','rank-2','rank-3'][i] || 'rank-n';
+        return `<tr>
+          <td><span class="rank-badge ${cls}">${i+1}</span></td>
+          <td><span style="cursor:pointer;color:var(--text)" onclick="viewProfile('${u.username}')">${u.username}</span></td>
+          <td style="color:var(--neon-green)">${u.wins||0}</td>
+          <td style="color:var(--neon-yellow)">${u.coins||0}</td>
+          <td style="color:var(--neon-purple)">${u.high_streak||0}</td>
+          <td><button onclick="removeFriend('${u.username}')"
+                      style="padding:3px 8px;background:rgba(255,0,110,0.06);
+                             border:1px solid rgba(255,0,110,0.25);border-radius:5px;
+                             color:var(--neon-pink);font-size:10px;cursor:pointer;
+                             font-family:'Share Tech Mono',monospace;">XOÁ</button></td>
+        </tr>`;
+      }).join('')}
+    </table>
+  `;
+}
+
+function renderFriendRequests() {
+  const cont = document.getElementById('friends-tab-content');
+  if (!cont) return;
+  const received = friendsData.received || [];
+  const sent     = friendsData.sent     || [];
+  cont.innerHTML = `
+    ${received.length > 0 ? `
+      <div style="font-size:11px;color:var(--text2);letter-spacing:2px;margin-bottom:10px;">LỜI MỜI NHẬN ĐƯỢC</div>
+      ${received.map(u => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;
+                    background:rgba(0,245,255,0.04);border:1px solid rgba(0,245,255,0.2);
+                    border-radius:8px;margin-bottom:8px;">
+          <span style="flex:1;font-size:13px;color:var(--text);cursor:pointer"
+                onclick="viewProfile('${u.username}')">${u.username}</span>
+          <span style="font-size:11px;color:var(--neon-green)">W:${u.wins||0}</span>
+          <button onclick="respondFriendRequest('${u.username}',true)"
+                  style="padding:6px 12px;background:rgba(6,214,160,0.1);
+                         border:1px solid rgba(6,214,160,0.4);border-radius:6px;
+                         color:var(--neon-green);font-size:11px;cursor:pointer;
+                         font-family:'Share Tech Mono',monospace;">✓ ĐỒNG Ý</button>
+          <button onclick="respondFriendRequest('${u.username}',false)"
+                  style="padding:6px 12px;background:rgba(255,0,110,0.06);
+                         border:1px solid rgba(255,0,110,0.3);border-radius:6px;
+                         color:var(--neon-pink);font-size:11px;cursor:pointer;
+                         font-family:'Share Tech Mono',monospace;">✕ TỪ CHỐI</button>
+        </div>`).join('')}
+      <div style="margin-bottom:16px;"></div>` : ''}
+
+    <div style="font-size:11px;color:var(--text2);letter-spacing:2px;margin-bottom:10px;">
+      LỜI MỜI ĐÃ GỬI ${sent.length > 0 ? '('+sent.length+')' : ''}
+    </div>
+    ${sent.length === 0
+      ? `<div style="font-size:12px;color:var(--text2);padding:12px 0;">Chưa có lời mời nào đang chờ</div>`
+      : sent.map(u => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;
+                    background:rgba(255,255,255,0.02);border:1px solid var(--border);
+                    border-radius:8px;margin-bottom:6px;">
+          <span style="flex:1;font-size:13px;color:var(--text2)">${u.username}</span>
+          <span style="font-size:10px;color:var(--text2);letter-spacing:1px;">CHỜ PHẢN HỒI...</span>
+        </div>`).join('')}
+  `;
+}
+
+function renderFriendsTabContent() {
+  if (friendsTabOpen === 'leaderboard') renderGlobalLeaderboard();
+  else if (friendsTabOpen === 'friends') renderFriendsList();
+  else renderFriendRequests();
+}
 
 let toastTimer = null;
 
@@ -1235,10 +1662,11 @@ function switchPanel(p) {
   document.querySelectorAll('.panel').forEach(el  => el.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
   document.getElementById('panel-' + p).classList.add('active');
-  const idx = { game:0, shop:1, stats:2 }[p];
+  const idx = { game:0, shop:1, stats:2, friends:3 }[p];
   document.querySelectorAll('.nav-tab')[idx]?.classList.add('active');
-  if (p === 'shop')  renderShop();
-  if (p === 'stats') renderStats();
+  if (p === 'shop')    renderShop();
+  if (p === 'stats')   renderStats();
+  if (p === 'friends') { loadFriends().then(renderFriendsTabs); }
 }
 
 
@@ -1246,8 +1674,26 @@ function switchPanel(p) {
    13. BOOT / INIT
 ════════════════════════════════════════════════════════════ */
 
-loadDB();
-initPads();
-initBall(1);
-draw();          // Vẽ preview canvas ngay
-bootIntro();     // Khởi động màn hình intro
+async function boot() {
+  initPads();
+  initBall(1);
+  draw();        // Vẽ preview canvas ngay
+
+  // Kiểm tra token cũ còn hợp lệ không
+  const token = getToken();
+  if (token) {
+    try {
+      const res   = await api('GET', '/api/me');
+      currentUser = res.user.username;
+      userData    = res.user;
+      isGuest     = false;
+      bootIntro(true);   // true = có session → sau intro vào thẳng main
+      return;
+    } catch(e) {
+      clearToken();  // token hết hạn
+    }
+  }
+  bootIntro(false);  // false = không có session → vào auth
+}
+
+boot();
