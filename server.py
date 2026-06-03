@@ -502,15 +502,21 @@ def api_friend_request():
     to_username = (request.get_json(silent=True) or {}).get("to_username", "").strip()
     uid         = g.current_user["id"]
     if not to_username or to_username == g.current_user["username"]:
-        return jsonify({"error": "Không hợp lệ"}), 400
+        return jsonify({"error": "Không thể kết bạn với chính mình"}), 400
     target = query_one("SELECT id FROM users WHERE username=%s", (to_username,))
     if not target:
         return jsonify({"error": "Người dùng không tồn tại"}), 404
     tid      = target["id"]
-    existing = query_one("""SELECT status FROM friendships
+    existing = query_one("""SELECT id, status, from_id FROM friendships
         WHERE (from_id=%s AND to_id=%s) OR (from_id=%s AND to_id=%s)""", (uid, tid, tid, uid))
     if existing:
-        return jsonify({"error": "Lời mời hoặc kết bạn đã tồn tại"}), 409
+        if existing["status"] == "accepted":
+            return jsonify({"error": "Đã là bạn bè rồi"}), 409
+        # Nếu đối phương đã gửi lời mời trước → tự động chấp nhận
+        if existing["from_id"] == tid:
+            query("UPDATE friendships SET status='accepted' WHERE id=%s", (existing["id"],), commit=True)
+            return jsonify({"ok": True, "auto_accepted": True})
+        return jsonify({"error": "Lời mời đã tồn tại"}), 409
     query("INSERT INTO friendships (from_id, to_id) VALUES (%s,%s)", (uid, tid), commit=True)
     return jsonify({"ok": True})
 
@@ -676,6 +682,19 @@ def api_history():
                     FROM match_history WHERE user_id=%s ORDER BY played_at DESC LIMIT 20""",
                  (uid,)) or []
     return jsonify({"history": [dict(r) for r in rows]})
+
+@app.route("/api/debug/clear-friendship", methods=["POST"])
+@require_auth
+def api_clear_friendship():
+    username = (request.get_json(silent=True) or {}).get("username", "")
+    uid      = g.current_user["id"]
+    target   = query_one("SELECT id FROM users WHERE username=%s", (username,))
+    if not target:
+        return jsonify({"error": "Không tìm thấy"}), 404
+    tid = target["id"]
+    query("DELETE FROM friendships WHERE (from_id=%s AND to_id=%s) OR (from_id=%s AND to_id=%s)",
+          (uid, tid, tid, uid), commit=True)
+    return jsonify({"ok": True})
 
 @app.route("/api/ping", methods=["GET"])
 def api_ping():
