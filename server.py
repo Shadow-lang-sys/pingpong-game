@@ -57,9 +57,7 @@ def close_db(error=None):
         db.close()
 
 def query(sql, params=(), one=False, commit=False):
-    # Đổi ? sang %s cho PostgreSQL
     sql  = sql.replace("?", "%s")
-    # Đổi SQLite AUTOINCREMENT → PostgreSQL SERIAL (chỉ dùng khi tạo bảng)
     conn = get_db()
     cur  = conn.cursor()
     cur.execute(sql, params)
@@ -67,7 +65,9 @@ def query(sql, params=(), one=False, commit=False):
         conn.commit()
     try:
         rows = cur.fetchall()
-        return rows[0] if one else rows
+        if one:
+            return rows[0] if rows else None
+        return rows
     except psycopg2.ProgrammingError:
         return None
 
