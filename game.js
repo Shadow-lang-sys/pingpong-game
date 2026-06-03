@@ -719,7 +719,13 @@ function enterMainScreen() {
   if (activeMusic !== 'menu') startMenuMusic();
   // Render danh sách bài trong music player
   renderMusicTrackList();
-  // Đóng music panel khi click ra ngoài
+  // Hiện chat bubble
+  if (!isGuest) {
+    document.getElementById('chat-bubble').classList.remove('hidden');
+    refreshUnreadBadge();
+    // Poll tin chưa đọc mỗi 30 giây
+    setInterval(refreshUnreadBadge, 30000);
+  }
   document.addEventListener('click', e => {
     const panel = document.getElementById('music-player-panel');
     const btn   = document.getElementById('music-btn');
@@ -1414,29 +1420,38 @@ function showProfileModal(p) {
           </div>`).join('')}
       </div>
 
-      <!-- Action button -->
-      ${isMe ? '' : isFriend
-        ? `<button onclick="removeFriend('${p.username}');document.getElementById('profile-modal').remove()"
-                   style="width:100%;padding:11px;background:rgba(255,0,110,0.1);
-                          border:1px solid rgba(255,0,110,0.4);border-radius:8px;
-                          color:var(--neon-pink);font-family:'Share Tech Mono',monospace;
-                          font-size:12px;letter-spacing:2px;cursor:pointer;">
-             XOÁ BẠN BÈ
-           </button>`
-        : isSent
-        ? `<button disabled style="width:100%;padding:11px;background:rgba(255,255,255,0.04);
-                          border:1px solid var(--border);border-radius:8px;
-                          color:var(--text2);font-family:'Share Tech Mono',monospace;
-                          font-size:12px;letter-spacing:2px;">
-             ĐÃ GỬI LỜI MỜI
-           </button>`
-        : `<button onclick="sendFriendRequest('${p.username}');document.getElementById('profile-modal').remove()"
-                   style="width:100%;padding:11px;background:rgba(0,245,255,0.1);
-                          border:1px solid rgba(0,245,255,0.4);border-radius:8px;
-                          color:var(--neon-cyan);font-family:'Share Tech Mono',monospace;
-                          font-size:12px;letter-spacing:2px;cursor:pointer;">
-             + KẾT BẠN
-           </button>`}
+      ${isMe ? '' : `
+        <div style="display:flex;gap:8px;margin-top:0;">
+          ${isFriend
+            ? `<button onclick="openDirectMessage('${p.username}')"
+                       style="flex:1;padding:11px;background:rgba(0,245,255,0.1);
+                              border:1px solid rgba(0,245,255,0.4);border-radius:8px;
+                              color:var(--neon-cyan);font-family:'Share Tech Mono',monospace;
+                              font-size:12px;letter-spacing:2px;cursor:pointer;">
+                 💬 NHẮN TIN
+               </button>
+               <button onclick="removeFriend('${p.username}');document.getElementById('profile-modal').remove()"
+                       style="padding:11px 16px;background:rgba(255,0,110,0.1);
+                              border:1px solid rgba(255,0,110,0.4);border-radius:8px;
+                              color:var(--neon-pink);font-family:'Share Tech Mono',monospace;
+                              font-size:12px;letter-spacing:2px;cursor:pointer;">
+                 XOÁ BẠN
+               </button>`
+            : isSent
+            ? `<button disabled style="flex:1;padding:11px;background:rgba(255,255,255,0.04);
+                              border:1px solid var(--border);border-radius:8px;
+                              color:var(--text2);font-family:'Share Tech Mono',monospace;
+                              font-size:12px;letter-spacing:2px;">
+                 ĐÃ GỬI LỜI MỜI
+               </button>`
+            : `<button onclick="sendFriendRequest('${p.username}');document.getElementById('profile-modal').remove()"
+                       style="flex:1;padding:11px;background:rgba(0,245,255,0.1);
+                              border:1px solid rgba(0,245,255,0.4);border-radius:8px;
+                              color:var(--neon-cyan);font-family:'Share Tech Mono',monospace;
+                              font-size:12px;letter-spacing:2px;cursor:pointer;">
+                 + KẾT BẠN
+               </button>`}
+        </div>`}
     </div>
   `;
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
@@ -1671,8 +1686,216 @@ function switchPanel(p) {
 
 
 /* ════════════════════════════════════════════════════════════
-   13. BOOT / INIT
+   12b. CHAT (Direct Message)
 ════════════════════════════════════════════════════════════ */
+
+let chatOpenWith   = null;   // username đang chat
+let chatPollTimer  = null;   // interval polling tin nhắn mới
+let chatListOpen   = false;
+
+/* ── Mở / đóng danh sách hội thoại ── */
+function toggleChatList() {
+  chatListOpen = !chatListOpen;
+  document.getElementById('chat-list-panel').classList.toggle('hidden', !chatListOpen);
+  document.getElementById('chat-window').classList.add('hidden');
+  chatOpenWith = null;
+  if (chatListOpen) loadConversations();
+}
+
+function closeChatList() {
+  chatListOpen = false;
+  document.getElementById('chat-list-panel').classList.add('hidden');
+}
+
+function closeChatWindow() {
+  document.getElementById('chat-window').classList.add('hidden');
+  chatOpenWith = null;
+  stopChatPoll();
+  // Quay lại list
+  document.getElementById('chat-list-panel').classList.remove('hidden');
+  chatListOpen = true;
+  loadConversations();
+}
+
+function backToChatList() {
+  document.getElementById('chat-window').classList.add('hidden');
+  chatOpenWith = null;
+  stopChatPoll();
+  document.getElementById('chat-list-panel').classList.remove('hidden');
+  loadConversations();
+}
+
+/* ── Load danh sách hội thoại ── */
+async function loadConversations() {
+  if (isGuest) return;
+  const cont = document.getElementById('chat-conversations');
+  try {
+    const res   = await api('GET', '/api/chat/conversations');
+    const convos = res.conversations;
+    if (convos.length === 0) {
+      cont.innerHTML = `<div style="text-align:center;padding:32px;color:var(--text2);font-size:12px;">
+        Kết bạn với ai đó để bắt đầu chat!
+      </div>`;
+      return;
+    }
+    cont.innerHTML = convos.map(c => {
+      const initials = c.username[0].toUpperCase();
+      const timeStr  = c.last_at ? formatChatTime(c.last_at) : '';
+      const preview  = c.last_msg
+        ? (c.last_msg.length > 28 ? c.last_msg.slice(0,28)+'…' : c.last_msg)
+        : '<span style="color:var(--text2);font-style:italic">Chưa có tin nhắn</span>';
+      return `
+        <div class="chat-convo-item" onclick="openChatWith('${c.username}')">
+          <div class="chat-convo-avatar">${initials}</div>
+          <div class="chat-convo-info">
+            <div class="chat-convo-name">${c.username}</div>
+            <div class="chat-convo-last">${preview}</div>
+          </div>
+          <div class="chat-convo-meta">
+            <div class="chat-convo-time">${timeStr}</div>
+            ${c.unread > 0
+              ? `<div class="chat-convo-unread">${c.unread}</div>`
+              : ''}
+          </div>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    cont.innerHTML = `<div style="text-align:center;padding:24px;color:var(--text2);font-size:12px;">Không thể tải tin nhắn</div>`;
+  }
+  // Cập nhật badge tổng
+  refreshUnreadBadge();
+}
+
+/* ── Mở chat với 1 người ── */
+async function openChatWith(username) {
+  chatOpenWith = username;
+  document.getElementById('chat-list-panel').classList.add('hidden');
+  const win = document.getElementById('chat-window');
+  win.classList.remove('hidden');
+  document.getElementById('chat-window-name').textContent = username;
+  document.getElementById('chat-messages').innerHTML =
+    '<div style="text-align:center;padding:16px;color:var(--text2);font-size:12px;">Đang tải...</div>';
+  await loadMessages(username);
+  document.getElementById('chat-input').focus();
+  // Polling mỗi 5 giây
+  stopChatPoll();
+  chatPollTimer = setInterval(() => {
+    if (chatOpenWith === username) loadMessages(username, true);
+  }, 5000);
+}
+
+/* ── Load tin nhắn ── */
+async function loadMessages(username, silent = false) {
+  try {
+    const res  = await api('GET', '/api/chat/history/' + username);
+    const msgs = res.messages;
+    const cont = document.getElementById('chat-messages');
+    const wasAtBottom = cont.scrollHeight - cont.scrollTop - cont.clientHeight < 40;
+
+    if (msgs.length === 0) {
+      if (!silent) cont.innerHTML =
+        '<div style="text-align:center;padding:32px;color:var(--text2);font-size:12px;">Hãy gửi tin nhắn đầu tiên!</div>';
+      return;
+    }
+
+    let html = '';
+    let lastDate = '';
+    msgs.forEach(m => {
+      const d       = new Date(m.created_at * 1000);
+      const dateStr = d.toLocaleDateString('vi-VN');
+      if (dateStr !== lastDate) {
+        html += `<div class="chat-date-divider">${dateStr}</div>`;
+        lastDate = dateStr;
+      }
+      const isMine = m.from === currentUser;
+      const timeStr = d.toLocaleTimeString('vi-VN', { hour:'2-digit', minute:'2-digit' });
+      html += `
+        <div class="chat-msg ${isMine ? 'mine' : 'theirs'}">
+          <div class="chat-msg-bubble">${escapeHtml(m.content)}</div>
+          <div class="chat-msg-time">${timeStr}</div>
+        </div>`;
+    });
+    cont.innerHTML = html;
+
+    // Cuộn xuống cuối nếu đang ở dưới hoặc lần đầu load
+    if (!silent || wasAtBottom) {
+      cont.scrollTop = cont.scrollHeight;
+    }
+    // Cập nhật badge
+    refreshUnreadBadge();
+  } catch(e) { /* silent */ }
+}
+
+/* ── Gửi tin nhắn ── */
+async function sendMessage() {
+  if (!chatOpenWith) return;
+  const input   = document.getElementById('chat-input');
+  const content = input.value.trim();
+  if (!content) return;
+  input.value = '';
+
+  // Hiện tin ngay (optimistic)
+  const cont    = document.getElementById('chat-messages');
+  const now     = Math.floor(Date.now() / 1000);
+  const timeStr = new Date().toLocaleTimeString('vi-VN', { hour:'2-digit', minute:'2-digit' });
+  cont.innerHTML += `
+    <div class="chat-msg mine">
+      <div class="chat-msg-bubble">${escapeHtml(content)}</div>
+      <div class="chat-msg-time">${timeStr}</div>
+    </div>`;
+  cont.scrollTop = cont.scrollHeight;
+
+  try {
+    await api('POST', '/api/chat/send', { to_username: chatOpenWith, content });
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
+}
+
+/* ── Badge số tin chưa đọc ── */
+async function refreshUnreadBadge() {
+  if (isGuest) return;
+  try {
+    const res    = await api('GET', '/api/chat/unread');
+    const total  = res.total || 0;
+    const badge  = document.getElementById('chat-unread-badge');
+    if (badge) {
+      badge.textContent    = total > 9 ? '9+' : total;
+      badge.style.display  = total > 0 ? 'flex' : 'none';
+    }
+  } catch(e) {}
+}
+
+function stopChatPoll() {
+  if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
+}
+
+/* ── Helper ── */
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
+function formatChatTime(ts) {
+  const d   = new Date(ts * 1000);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString('vi-VN', { hour:'2-digit', minute:'2-digit' });
+  }
+  return d.toLocaleDateString('vi-VN', { day:'2-digit', month:'2-digit' });
+}
+
+/* Mở chat trực tiếp từ profile modal hoặc danh sách bạn bè */
+function openDirectMessage(username) {
+  // Đóng modal nếu có
+  document.getElementById('profile-modal')?.remove();
+  // Hiện bubble + mở chat
+  document.getElementById('chat-bubble').classList.remove('hidden');
+  chatListOpen = false;
+  openChatWith(username);
+}
+
+
 
 async function boot() {
   initPads();
